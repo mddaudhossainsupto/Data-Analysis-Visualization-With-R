@@ -1,0 +1,86 @@
+project<-read.csv("D:/Users/dhsup/Desktop/DataScienceproject/IRIS.csv",header=TRUE, sep=",")
+project
+
+colnames(project) <- c("SepalLength", "SepalWidth", "PetalLength", "PetalWidth", "Class")
+head(project)
+
+c_columns <- c("SepalLength", "SepalWidth", "PetalLength", "PetalWidth")
+project[, c_columns] <- lapply(project[, c_columns], as.factor)
+
+print(colSums(is.na(project)))
+
+install.packages("zoo")
+library(zoo)
+
+numeric_columns <- c("SepalLength", "SepalWidth", "PetalLength", "PetalWidth")
+project[, numeric_columns] <- apply(project[, numeric_columns], 2, function(x) zoo::na.locf(x, na.rm = FALSE))
+print(colSums(is.na(project)))
+write.csv(project, "D:/Users/dhsup/Desktop/DataScienceproject/IRIS.csv", row.names = FALSE)
+
+s_attributes <- names(project)[sapply(project[, c_columns], function(col) {
+  chisq.test(table(project$Class, col), simulate.p.value = TRUE)$p.value < 0.05
+})]
+print(s_attributes)
+project <- project[, c(s_attributes, "Class")]
+
+install.packages("e1071")
+library(e1071)
+
+X <- project[, 1:4]
+y <- project[, 5]
+
+naiveBayesModel <- function(X, y) {
+
+  data <- data.frame(X, y)
+  set.seed(123)
+  train_indices <- sample(seq_len(nrow(data)), 0.7 * nrow(data))
+  train_data <- data[train_indices, ]
+  test_data <- data[-train_indices, ]
+  nb_model <- naiveBayes(y ~ ., data = train_data)
+  return(nb_model)
+
+}
+nb_model <- naiveBayesModel(X, y)
+
+
+install.packages("caret")
+library(caret)
+set.seed(123)
+splitIndex <- createDataPartition(y, p = 0.8, list = FALSE)
+train_data <- X[splitIndex, ]
+test_data <- X[-splitIndex, ]
+train_labels <- y[splitIndex]
+test_labels <- y[-splitIndex]
+
+predictAccuracy <- function(model, test_data, test_labels) {
+  
+  predictions <- predict(model, newdata = test_data)
+  accuracy <- sum(predictions == test_labels) / length(test_labels)
+  return(accuracy)
+}
+accuracy_test <- predictAccuracy(nb_model, test_data, test_labels)
+print(paste("Accuracy (Test set):", accuracy_test))
+
+crossValidationAccuracy <- function(X, y, folds = 10) {
+
+  data <- data.frame(X, y)
+  custom_model <- train(y ~ ., data = data, method = "nb", trControl = trainControl(method = "cv", number = folds))
+  predictions <- predict(custom_model, newdata = data)
+  accuracy <- sum(predictions == y) / length(y)
+  return(accuracy)
+}
+
+accuracy_cv <- crossValidationAccuracy(X, y)
+print(paste("Accuracy (10-fold cross-validation):", accuracy_cv))
+
+conf_matrix <- table(predict(nb_model, X), y)
+print("Confusion Matrix:")
+print(conf_matrix)
+
+precision <- diag(conf_matrix) / rowSums(conf_matrix)
+recall <- diag(conf_matrix) / colSums(conf_matrix)
+f_measure <- 2 * (precision * recall) / (precision + recall)
+
+metrics <- data.frame(Precision = precision, Recall = recall, F_Measure = f_measure)
+print("Classification Report:")
+print(metrics)
